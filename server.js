@@ -41,12 +41,12 @@ async function initGoogleSheet() {
 async function initDatabase() {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS stations (
+      CREATE TABLE OR REPLACE stations (
         id SERIAL PRIMARY KEY,
         name VARCHAR(150) NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS bookings (
+      CREATE TABLE OR REPLACE bookings (
         id SERIAL PRIMARY KEY,
         name VARCHAR(150) NOT NULL,
         contact VARCHAR(80),
