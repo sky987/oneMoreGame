@@ -9,7 +9,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "google-spreadsheet": "^3.4.0",
+    "google-spreadsheet": "^4.0.2",
     "pg": "^8.11.1"
   },
   "engines": {
