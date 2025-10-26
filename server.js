@@ -52,7 +52,8 @@ async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      DROP TABLE stations;
+      DROP TABLE IF EXISTS bookings CASCADE;
+      DROP TABLE IF EXISTS stations CASCADE;
 
       CREATE TABLE IF NOT EXISTS stations (
         id SERIAL PRIMARY KEY,
@@ -62,8 +63,6 @@ async function initDatabase() {
         rate_per_hour DECIMAL(10,2) DEFAULT 100.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
-      DROP TABLE bookings;
 
       CREATE TABLE IF NOT EXISTS bookings (
         id SERIAL PRIMARY KEY,
