@@ -7,10 +7,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// PostgreSQL pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+// Postgres pool via DATABASE_URL (Render)
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL, 
+  ssl: { rejectUnauthorized: false } 
 });
 
 // Google Sheets setup
@@ -23,7 +23,6 @@ try {
 }
 let sheet = null;
 
-// Initialize Google Sheet
 async function initGoogleSheet() {
   if (!SHEET_ID || !CREDS) {
     console.warn('Google Sheets not configured: skipping');
@@ -32,7 +31,7 @@ async function initGoogleSheet() {
   try {
     const doc = new GoogleSpreadsheet(SHEET_ID);
 
-    // Use new v3+ API
+    // v4 auth method
     await doc.useServiceAccountAuth({
       client_email: CREDS.client_email,
       private_key: CREDS.private_key.replace(/\\n/g, '\n'),
@@ -40,9 +39,9 @@ async function initGoogleSheet() {
 
     await doc.loadInfo();
     sheet = doc.sheetsByIndex[0];
-    console.log('Google Sheet initialized');
+    console.log('✅ Google Sheet initialized');
   } catch (err) {
-    console.error('Google Sheet init error:', err);
+    console.error('❌ Google Sheet init error:', err);
     sheet = null;
   }
 }
@@ -61,20 +60,21 @@ async function initDatabase() {
 
       CREATE TABLE IF NOT EXISTS bookings (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER,
+        user_name VARCHAR(150) NOT NULL,
+        contact VARCHAR(80),
         station_id INTEGER REFERENCES stations(id),
         booking_date DATE NOT NULL,
         start_time TIME NOT NULL,
         end_time TIME NOT NULL,
         duration_hours DECIMAL(3,1),
         total_price DECIMAL(10,2),
-        status VARCHAR(20) DEFAULT 'confirmed',
+        status VARCHAR(20) DEFAULT 'Active',
         booking_code VARCHAR(50) UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // Insert default stations if not exist
+    // Insert default stations if none exist
     const { rows } = await pool.query('SELECT COUNT(*) FROM stations');
     if (parseInt(rows[0].count) === 0) {
       await pool.query(`
@@ -87,9 +87,9 @@ async function initDatabase() {
       `);
     }
 
-    console.log('Database initialized successfully');
+    console.log('✅ PostgreSQL database ready');
   } catch (err) {
-    console.error('DB init error:', err);
+    console.error('❌ DB init error', err);
   }
 }
 
@@ -98,91 +98,101 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client', 'build')));
 
-// Push booking to Google Sheet
-async function pushBookingToSheet(row) {
+// Push booking to Google Sheet (async)
+async function pushBookingToSheet(booking) {
   if (!sheet) return;
   try {
-    await sheet.addRow(row);
+    await sheet.addRow({
+      Name: booking.user_name,
+      Contact: booking.contact || '',
+      Station: booking.station_name || booking.station_id,
+      Date: booking.booking_date,
+      StartTime: booking.start_time,
+      EndTime: booking.end_time,
+      Duration: booking.duration_hours,
+      Price: booking.total_price,
+      Status: booking.status
+    });
   } catch (err) {
-    console.error('Failed to push to sheet', err);
+    console.error('❌ Failed to push booking to Google Sheet', err);
   }
 }
 
 // Routes
 
-// GET stations (optionally pass ?date=YYYY-MM-DD)
+// Get all stations with optional availability for date/time
 app.get('/api/stations', async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, start_time } = req.query;
     const stations = (await pool.query('SELECT * FROM stations ORDER BY id')).rows;
 
-    if (!date) return res.json(stations);
+    if (!date || !start_time) return res.json(stations);
 
     const booked = (await pool.query(
-      'SELECT station_id FROM bookings WHERE booking_date=$1 AND status=$2',
-      [date, 'confirmed']
+      'SELECT station_id FROM bookings WHERE booking_date=$1 AND start_time=$2 AND status=$3',
+      [date, start_time, 'Active']
     )).rows.map(r => r.station_id);
 
-    const out = stations.map(s => ({
+    const result = stations.map(s => ({
       ...s,
       status: booked.includes(s.id) ? 'Occupied' : 'Available'
     }));
 
-    res.json(out);
+    res.json(result);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to load stations' });
+    res.status(500).json({ error: 'Failed to fetch stations' });
   }
 });
 
-// GET bookings
+// Get all bookings
 app.get('/api/bookings', async (req, res) => {
   try {
-    const rows = (await pool.query(`
+    const bookings = (await pool.query(`
       SELECT b.*, s.station_name
       FROM bookings b
       LEFT JOIN stations s ON b.station_id = s.id
       ORDER BY b.booking_date DESC, b.start_time DESC
     `)).rows;
-    res.json(rows);
+    res.json(bookings);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch bookings' });
   }
 });
 
-// POST create booking
+// Create booking
 app.post('/api/bookings', async (req, res) => {
   try {
-    const { user_id, station_id, booking_date, start_time, end_time, duration_hours, total_price } = req.body;
-
-    if (!station_id || !booking_date || !start_time || !end_time) {
+    const { user_name, contact, station_id, booking_date, start_time, end_time, duration_hours, total_price } = req.body;
+    if (!user_name || !station_id || !booking_date || !start_time || !end_time) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Check availability
     const existing = (await pool.query(
       'SELECT * FROM bookings WHERE station_id=$1 AND booking_date=$2 AND start_time=$3 AND status=$4',
-      [station_id, booking_date, start_time, 'confirmed']
+      [station_id, booking_date, start_time, 'Active']
     )).rows;
 
     if (existing.length > 0) return res.status(400).json({ error: 'Station already booked for this time' });
 
+    // Insert booking
     const booking_code = `KB${Date.now()}`;
     const result = (await pool.query(
-      `INSERT INTO bookings (user_id, station_id, booking_date, start_time, end_time, duration_hours, total_price, booking_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [user_id || null, station_id, booking_date, start_time, end_time, duration_hours, total_price, booking_code]
+      `INSERT INTO bookings 
+      (user_name, contact, station_id, booking_date, start_time, end_time, duration_hours, total_price, status, booking_code)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING *`,
+      [user_name, contact, station_id, booking_date, start_time, end_time, duration_hours, total_price, 'Active', booking_code]
     )).rows[0];
 
-    // push to Google Sheet async
-    const stationRow = (await pool.query('SELECT station_name FROM stations WHERE id=$1', [station_id])).rows[0];
-    pushBookingToSheet({
-      Name: `User-${user_id || 'Guest'}`,
-      Contact: '',
-      Station: stationRow?.station_name || `Station ${station_id}`,
-      DateTime: `${booking_date} ${start_time}`,
-      Status: 'Active'
-    });
+    // Include station name for sheet
+    const station = (await pool.query('SELECT station_name FROM stations WHERE id=$1', [station_id])).rows[0];
+    result.station_name = station?.station_name || station_id;
+
+    // Push to Google Sheet (async)
+    pushBookingToSheet(result);
 
     res.json({ message: 'Booking confirmed', booking: result });
   } catch (err) {
@@ -191,7 +201,7 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-// POST mark booking complete
+// Complete booking
 app.post('/api/bookings/:id/complete', async (req, res) => {
   try {
     const id = req.params.id;
@@ -200,13 +210,10 @@ app.post('/api/bookings/:id/complete', async (req, res) => {
       ['Completed', id]
     )).rows[0];
 
-    // Update Google Sheet (best-effort)
+    // Update sheet row (best-effort)
     if (sheet && result) {
       const rows = await sheet.getRows();
-      const match = rows.find(r =>
-        r.Station === result.station_name &&
-        r.DateTime === `${result.booking_date} ${result.start_time}`
-      );
+      const match = rows.find(r => r.booking_code == result.booking_code);
       if (match) {
         match.Status = 'Completed';
         await match.save();
@@ -220,7 +227,7 @@ app.post('/api/bookings/:id/complete', async (req, res) => {
   }
 });
 
-// Serve React app for all other routes
+// Serve React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'build', 'index.html'));
 });
@@ -229,5 +236,5 @@ app.get('*', (req, res) => {
 (async () => {
   await initDatabase();
   await initGoogleSheet();
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 })();
