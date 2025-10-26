@@ -1,0 +1,18 @@
+{
+  "name": "gaming-cafe-booking",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "postinstall": "cd client && npm install --silent && npm run build --silent"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "google-spreadsheet": "^3.4.0",
+    "pg": "^8.11.1"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

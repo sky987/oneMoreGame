@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: gaming-cafe-booking
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run postinstall
+    startCommand: npm start
+    branch: main
