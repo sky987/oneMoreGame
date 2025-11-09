@@ -181,18 +181,6 @@ app.get('/api/stations', async (req, res) => {
       const currentTime = now.toTimeString().substring(0, 5);
       const currentDate = now.toISOString().split('T')[0];
 
-      // Check current bookings
-      const currentlyBooked = new Set(
-        bookings
-          .filter(b => 
-            b.booking_date === currentDate && 
-            b.status === 'confirmed' &&
-            b.start_time <= currentTime &&
-            b.end_time > currentTime
-          )
-          .map(b => b.station_id)
-      );
-
       // Get current bookings with time remaining
       const currentBookings = bookings.filter(b => 
         b.booking_date === currentDate && 
@@ -201,7 +189,7 @@ app.get('/api/stations', async (req, res) => {
         b.end_time > currentTime
       );
 
-      return res.json(stations.map(s => {
+      const response = stations.map(s => {
         const currentBooking = currentBookings.find(b => b.station_id === s.id);
         const timeRemaining = currentBooking ? getTimeRemaining(currentTime, currentBooking.end_time) : null;
 
@@ -217,7 +205,9 @@ app.get('/api/stations', async (req, res) => {
           } : null,
           value: s.id
         };
-      })));
+      });
+
+      return res.json(response);
     }
 
     // For specific datetime query
