@@ -80,11 +80,23 @@ async function initGoogleSheets() {
     // Initialize stations if empty
     const stations = await stationsSheet.getRows();
     if (stations.length === 0) {
-      for (let i = 1; i <= 6; i++) {
+      // Initialize PC stations (1-5)
+      for (let i = 1; i <= 5; i++) {
         await stationsSheet.addRow({
           id: i,
           station_name: `Station ${i}`,
-          specs: '',
+          specs: 'PC',
+          status: 'available',
+          created_at: new Date().toISOString()
+        });
+      }
+      
+      // Initialize PS5 stations (6-8)
+      for (let i = 6; i <= 8; i++) {
+        await stationsSheet.addRow({
+          id: i,
+          station_name: `Station ${i}`,
+          specs: 'PS5',
           status: 'available',
           created_at: new Date().toISOString()
         });
@@ -127,9 +139,10 @@ app.get('/api/stations', async (req, res) => {
     if (!datetime) {
       return res.json(stations.map(s => ({
         id: parseInt(s.id),
-        station_name: s.station_name,
+        station_name: `${s.station_name} #${s.specs}`,
         specs: s.specs,
-        status: s.status
+        status: s.status,
+        value: s.id // Adding value field for dropdown
       })));
     }
 
