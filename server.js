@@ -53,20 +53,24 @@ async function initGoogleSheets() {
     });
 
     await doc.loadInfo();
+    console.log('Spreadsheet loaded:', doc.title);
     
     // Get or create sheets
-    try {
-      stationsSheet = doc.sheetsByTitle['Stations'];
-    } catch (e) {
+    stationsSheet = doc.sheetsByTitle['Stations'];
+    if (!stationsSheet) {
+      console.log('Creating Stations sheet...');
       stationsSheet = await doc.addSheet({ 
         title: 'Stations', 
         headerValues: ['id', 'station_name', 'specs', 'status', 'created_at'] 
       });
+      console.log('Stations sheet created successfully');
+    } else {
+      console.log('Found existing Stations sheet');
     }
     
-    try {
-      bookingsSheet = doc.sheetsByTitle['Bookings'];
-    } catch (e) {
+    bookingsSheet = doc.sheetsByTitle['Bookings'];
+    if (!bookingsSheet) {
+      console.log('Creating Bookings sheet...');
       bookingsSheet = await doc.addSheet({ 
         title: 'Bookings', 
         headerValues: [
@@ -75,13 +79,22 @@ async function initGoogleSheets() {
           'status', 'booking_code', 'created_at'
         ] 
       });
+      console.log('Bookings sheet created successfully');
+    } else {
+      console.log('Found existing Bookings sheet');
     }
 
     // Initialize stations if empty
+    console.log('Loading stations data...');
+    await stationsSheet.loadCells();
     const stations = await stationsSheet.getRows();
-    if (stations.length === 0) {
+    
+    if (!stations || stations.length === 0) {
+      console.log('No stations found. Initializing default stations...');
+      
       // Initialize PC stations (1-5)
       for (let i = 1; i <= 5; i++) {
+        console.log(`Creating PC Station ${i}...`);
         await stationsSheet.addRow({
           id: i,
           station_name: `Station ${i}`,
@@ -93,6 +106,7 @@ async function initGoogleSheets() {
       
       // Initialize PS5 stations (6-8)
       for (let i = 6; i <= 8; i++) {
+        console.log(`Creating PS5 Station ${i}...`);
         await stationsSheet.addRow({
           id: i,
           station_name: `Station ${i}`,
@@ -101,6 +115,10 @@ async function initGoogleSheets() {
           created_at: new Date().toISOString()
         });
       }
+      
+      console.log('All stations initialized successfully');
+    } else {
+      console.log(`Found ${stations.length} existing stations`);
     }
 
     console.log('✅ Google Sheets initialized');
@@ -113,7 +131,13 @@ async function initGoogleSheets() {
       response: err.response?.data,
     });
     
-    if (err.message.includes('permission')) {
+    if (err.message.includes('getRows')) {
+      console.error('\nPossible solutions:');
+      console.error('1. Make sure the sheets are properly initialized');
+      console.error('2. Try clearing the document cache and reinitializing');
+      console.error('3. Verify the sheet structure is correct');
+      console.error('4. Check if the service account has sufficient permissions');
+    } else if (err.message.includes('permission')) {
       console.error('\nPossible solutions:');
       console.error('1. Verify the service account email address is correct');
       console.error('2. Make sure you have shared the Google Sheet with the service account email');
