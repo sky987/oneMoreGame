@@ -5,7 +5,7 @@ export default function App(){
   return (
     <div className="container">
       <div className="header">
-        <div className="logo">Kali Kalari</div>
+        <div className="logo">One More Game</div>
         <div className="small">Gaming Cafe Booking</div>
       </div>
       <BookingPreview />
