@@ -5,10 +5,14 @@ export default function BookingPreview(){
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{
+  useEffect(() => {
     loadStations();
     loadBookings();
-  },[]);
+
+    // Refresh station status every 30 seconds
+    const intervalId = setInterval(loadStations, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   async function loadStations(){
     try {
