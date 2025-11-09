@@ -8,16 +8,38 @@ const PORT = process.env.PORT || 3000;
 
 // Helper function to calculate time remaining
 function getTimeRemaining(currentTime, endTime) {
+  console.log('Calculating time remaining:', { currentTime, endTime });
+  
+  // Parse the time strings
   const [currentHour, currentMinute] = currentTime.split(':').map(Number);
   const [endHour, endMinute] = endTime.split(':').map(Number);
   
-  let minutesRemaining = (endHour * 60 + endMinute) - (currentHour * 60 + currentMinute);
-  if (minutesRemaining < 0) minutesRemaining += 24 * 60; // Handle day wraparound
+  // Convert to total minutes for easier comparison
+  let currentMinutes = currentHour * 60 + currentMinute;
+  let endMinutes = endHour * 60 + endMinute;
   
+  // Calculate remaining minutes
+  let minutesRemaining = endMinutes - currentMinutes;
+  // If end time is on the next day (e.g., current 23:00, end 01:00)
+  if (minutesRemaining < 0) {
+    minutesRemaining += 24 * 60; // Add 24 hours worth of minutes
+  }
+  
+  // Convert to hours and minutes
   const hours = Math.floor(minutesRemaining / 60);
   const minutes = minutesRemaining % 60;
   
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const result = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  console.log('Time remaining calculation:', {
+    currentMinutes,
+    endMinutes,
+    minutesRemaining,
+    hours,
+    minutes,
+    result
+  });
+  
+  return result;
 }
 
 // Google Sheets setup
@@ -182,15 +204,47 @@ app.get('/api/stations', async (req, res) => {
       const currentDate = now.toISOString().split('T')[0];
 
       // Get current bookings with time remaining
-      const currentBookings = bookings.filter(b => 
-        b.booking_date === currentDate && 
-        b.status === 'confirmed' &&
-        b.start_time <= currentTime &&
-        b.end_time > currentTime
-      );
+      const currentBookings = bookings.filter(b => {
+        // Only consider confirmed bookings for today
+        if (b.booking_date !== currentDate || b.status !== 'confirmed') {
+          return false;
+        }
+
+        // Convert times to minutes since midnight for easier comparison
+        const [startHour, startMinute] = b.start_time.split(':').map(Number);
+        const [endHour, endMinute] = b.end_time.split(':').map(Number);
+        const [currentHour, currentMinute] = currentTime.split(':').map(Number);
+
+        const startMinutes = startHour * 60 + startMinute;
+        const endMinutes = endHour * 60 + endMinute;
+        const currentMinutes = currentHour * 60 + currentMinute;
+
+        // Handle cases where end time is on the next day
+        const adjustedEndMinutes = endMinutes < startMinutes ? endMinutes + (24 * 60) : endMinutes;
+        const adjustedCurrentMinutes = currentMinutes < startMinutes ? currentMinutes + (24 * 60) : currentMinutes;
+
+        console.log('Time comparison:', {
+          booking: b.id,
+          start: startMinutes,
+          end: endMinutes,
+          current: currentMinutes,
+          adjustedEnd: adjustedEndMinutes,
+          adjustedCurrent: adjustedCurrentMinutes,
+          isActive: startMinutes <= currentMinutes && adjustedCurrentMinutes < adjustedEndMinutes
+        });
+
+        return startMinutes <= currentMinutes && adjustedCurrentMinutes < adjustedEndMinutes;
+      });
+
+      console.log('Current bookings:', currentBookings.map(b => ({
+        station: b.station_id,
+        start: b.start_time,
+        end: b.end_time
+      })));
 
       const response = stations.map(s => {
-        const currentBooking = currentBookings.find(b => b.station_id === s.id);
+        // Make sure to convert IDs to strings for comparison
+        const currentBooking = currentBookings.find(b => String(b.station_id) === String(s.id));
         const timeRemaining = currentBooking ? getTimeRemaining(currentTime, currentBooking.end_time) : null;
 
         return {
