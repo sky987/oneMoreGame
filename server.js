@@ -2,6 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const { JWT } = require('google-auth-library');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 
 const app = express();
@@ -11,11 +12,34 @@ const PORT = process.env.PORT || 3000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  // Add connection handling parameters
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+  max: 10, // Reduce max connections
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000, // Increase connection timeout
+  application_name: 'gaming-cafe-booking' // Help identify connections
 });
+
+// Handle pool errors
+pool.on('error', (err, client) => {
+  console.error('Unexpected error on idle client', err);
+});
+
+// Verify database connection
+const verifyConnection = async () => {
+  let retries = 5;
+  while (retries) {
+    try {
+      const client = await pool.connect();
+      client.release();
+      console.log('✅ Database connection verified');
+      return true;
+    } catch (err) {
+      retries -= 1;
+      console.log(`Database connection attempt failed. Retries left: ${retries}`);
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
+    }
+  }
+  return false;
+};
 
 // Google Sheets setup
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -35,9 +59,16 @@ async function initGoogleSheet() {
 
   try {
     const doc = new GoogleSpreadsheet(SHEET_ID);
+    
+    // Create a JWT client using the credentials
+    const client = new JWT({
+      email: CREDS.client_email,
+      key: CREDS.private_key.replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    // v4 auth method
-    await doc.useServiceAccountAuth(CREDS);
+    // Authorize with the JWT client
+    await doc.useServiceAccountAuth(client);
 
     await doc.loadInfo();
     sheet = doc.sheetsByIndex[0];
@@ -51,6 +82,12 @@ async function initGoogleSheet() {
 // Initialize DB tables
 async function initDatabase() {
   try {
+    // First verify the connection
+    const isConnected = await verifyConnection();
+    if (!isConnected) {
+      throw new Error('Could not establish database connection after multiple retries');
+    }
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS stations (
         id SERIAL PRIMARY KEY,
@@ -96,11 +133,18 @@ app.use(express.static(path.join(__dirname, 'client', 'build')));
 
 // Push booking to Google Sheet (non-blocking)
 async function pushBookingToSheet(row) {
-  if (!sheet) return;
+  // Skip if Google Sheets is not configured
+  if (!sheet) {
+    console.log('Skipping Google Sheets sync (not configured)');
+    return;
+  }
+  
+  // Attempt to push to Google Sheets but don't block or fail if it errors
   try {
     await sheet.addRow(row);
+    console.log('✓ Booking synced to Google Sheets');
   } catch (err) {
-    console.error('Failed to push booking to Google Sheet', err);
+    console.warn('Failed to sync booking to Google Sheets (continuing with PostgreSQL only):', err.message);
   }
 }
 
@@ -204,15 +248,20 @@ app.post('/api/bookings/:id/complete', async (req, res) => {
       await pool.query('UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *', ['completed', id])
     ).rows[0];
 
-    // Update Google Sheet
+    // Try to update Google Sheet (non-blocking)
     if (sheet && result) {
-      const rows = await sheet.getRows();
-      const match = rows.find(
-        r => r.Name === result.user_name && r.Station === result.station_id && r.Status === 'confirmed'
-      );
-      if (match) {
-        match.Status = 'completed';
-        await match.save();
+      try {
+        const rows = await sheet.getRows();
+        const match = rows.find(
+          r => r.Name === result.user_name && r.Station === result.station_id && r.Status === 'confirmed'
+        );
+        if (match) {
+          match.Status = 'completed';
+          await match.save();
+          console.log('✓ Booking completion synced to Google Sheets');
+        }
+      } catch (err) {
+        console.warn('Failed to sync booking completion to Google Sheets (continuing with PostgreSQL only):', err.message);
       }
     }
 
@@ -230,7 +279,23 @@ app.get('*', (req, res) => {
 
 // Start
 (async () => {
-  await initDatabase();
-  await initGoogleSheet();
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  try {
+    // Initialize database first - this is critical
+    await initDatabase();
+    
+    // Try to initialize Google Sheets in the background
+    initGoogleSheet().catch(err => {
+      console.warn('Google Sheets initialization failed (app will continue with PostgreSQL only):', err.message);
+    });
+    
+    // Start the server regardless of Google Sheets status
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log('📊 Database: Connected');
+      console.log(`📑 Google Sheets: ${sheet ? 'Connected' : 'Disabled - using PostgreSQL only'}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
 })();
