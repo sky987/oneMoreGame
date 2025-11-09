@@ -38,6 +38,29 @@ export default function BookingPreview(){
     const form = e.target;
     const datetime = new Date(form.datetime.value);
     
+    // Check if selected time is in the past
+    if (datetime < new Date()) {
+      alert('Cannot book for past dates/times');
+      return;
+    }
+    
+    // Check if there's already a booking for this time
+    const selectedDate = datetime.toISOString().split('T')[0];
+    const selectedTime = datetime.toTimeString().substring(0, 5);
+    
+    const existingBooking = bookings.find(b => 
+      b.booking_date === selectedDate &&
+      b.station_id === parseInt(form.station.value, 10) &&
+      b.status === 'confirmed' &&
+      ((selectedTime >= b.start_time && selectedTime < b.end_time) ||
+       (b.start_time >= selectedTime && b.start_time < form.duration.value))
+    );
+    
+    if (existingBooking) {
+      alert('This station is already booked for this time period');
+      return;
+    }
+    
     // Get duration in hours and minutes
     const [durationHours, durationMinutes] = form.duration.value.split(':').map(Number);
     const totalHours = durationHours + (durationMinutes / 60);
@@ -120,9 +143,30 @@ export default function BookingPreview(){
             <h2>Live Station Availability</h2>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
               {stations.map(s => (
-                <div key={s.id} className={`station ${s.status.toLowerCase() === 'occupied' ? 'occupied' : 'available'}`}>
+                <div 
+                  key={s.id} 
+                  className={`station ${s.status.toLowerCase() === 'occupied' ? 'occupied' : 'available'}`}
+                  style={{
+                    padding: '15px',
+                    borderRadius: '8px',
+                    backgroundColor: s.status.toLowerCase() === 'occupied' ? '#ff444420' : '#00440020',
+                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#004400'}`
+                  }}
+                >
                   <div style={{fontWeight:700}}>{s.station_name}</div>
-                  <div className="small">{s.status}</div>
+                  <div className="small" style={{
+                    color: s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#00aa00',
+                    marginTop: '5px'
+                  }}>
+                    {s.status}
+                  </div>
+                  {s.status.toLowerCase() === 'occupied' && (
+                    <div className="small" style={{marginTop: '5px', color: '#ff8888'}}>
+                      <div>User: {s.currentBooking.userName}</div>
+                      <div>Time Left: {s.timeRemaining}</div>
+                      <div>Until: {s.currentBooking.endTime}</div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
