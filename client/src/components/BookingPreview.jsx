@@ -4,6 +4,7 @@ export default function BookingPreview(){
   const [bookings, setBookings] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
 
   useEffect(() => {
     loadStations();
@@ -20,6 +21,7 @@ export default function BookingPreview(){
       const data = await res.json();
       console.log('Loaded stations:', data);
       setStations(data);
+      setLastUpdate(new Date());
     } catch (err) {
       console.error('Failed to load stations:', err);
       setStations([]);
@@ -39,7 +41,12 @@ export default function BookingPreview(){
     const datetime = new Date(form.datetime.value);
     
     // Check if selected time is in the past
-    if (datetime < new Date()) {
+    const now = new Date();
+    const selectedDateTime = datetime.getTime();
+    const currentDateTime = now.getTime();
+    
+    // Allow same day bookings but prevent past times
+    if (selectedDateTime < currentDateTime - (1000 * 60)) { // Allow 1 minute buffer
       alert('Cannot book for past dates/times');
       return;
     }
@@ -48,9 +55,17 @@ export default function BookingPreview(){
     const selectedDate = datetime.toISOString().split('T')[0];
     const selectedTime = datetime.toTimeString().substring(0, 5);
     
+    const selectedStations = Array.from(form.querySelectorAll('input[name="station"]:checked')).map(checkbox => parseInt(checkbox.value, 10));
+    
+    if (selectedStations.length === 0) {
+      alert('Please select at least one station');
+      return;
+    }
+
+    // Check for existing bookings for any selected station
     const existingBooking = bookings.find(b => 
       b.booking_date === selectedDate &&
-      b.station_id === parseInt(form.station.value, 10) &&
+      selectedStations.includes(parseInt(b.station_id, 10)) &&
       b.status === 'confirmed' &&
       ((selectedTime >= b.start_time && selectedTime < b.end_time) ||
        (b.start_time >= selectedTime && b.start_time < form.duration.value))
@@ -65,34 +80,60 @@ export default function BookingPreview(){
     const [durationHours, durationMinutes] = form.duration.value.split(':').map(Number);
     const totalHours = durationHours + (durationMinutes / 60);
     
-    // Get station details for pricing
-    const selectedStation = stations.find(s => s.id === parseInt(form.station.value, 10));
-    const hourlyRate = selectedStation?.specs === 'PS5' ? 100 : 60;
-    const totalPrice = Math.round(totalHours * hourlyRate);
-    
     // Calculate end time
     const startTime = datetime;
     const endTime = new Date(startTime.getTime() + (durationHours * 60 + durationMinutes) * 60000);
     
-    const payload = {
-      user_name: form.name.value,
-      contact: form.contact.value.replace(/[^0-9+]/g, ''), // Clean phone number
-      station_id: parseInt(form.station.value, 10),
-      booking_date: datetime.toISOString().split('T')[0],
-      start_time: startTime.toTimeString().substring(0, 5),
-      end_time: endTime.toTimeString().substring(0, 5),
-      duration_hours: totalHours.toFixed(2),
-      total_price: totalPrice
-    };
-    const res = await fetch('/api/bookings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    const result = await res.json();
-    if (res.ok) {
-      alert('Booking confirmed');
+    // Create booking for each selected station
+    const successfulBookings = [];
+    const failedBookings = [];
+
+    for (const stationId of selectedStations) {
+      const selectedStation = stations.find(s => s.id === stationId);
+      const hourlyRate = selectedStation?.specs === 'PS5' ? 100 : 60;
+      const stationPrice = Math.round(totalHours * hourlyRate);
+
+      const payload = {
+        user_name: form.name.value,
+        contact: form.contact.value.replace(/[^0-9+]/g, ''), // Clean phone number
+        station_id: stationId,
+        booking_date: datetime.toISOString().split('T')[0],
+        start_time: startTime.toTimeString().substring(0, 5),
+        end_time: endTime.toTimeString().substring(0, 5),
+        duration_hours: totalHours.toFixed(2),
+        total_price: stationPrice
+      };
+
+      try {
+        const res = await fetch('/api/bookings', { 
+          method: 'POST', 
+          headers: {'Content-Type':'application/json'}, 
+          body: JSON.stringify(payload) 
+        });
+        const result = await res.json();
+        
+        if (res.ok) {
+          successfulBookings.push(selectedStation.station_name);
+        } else {
+          failedBookings.push({ station: selectedStation.station_name, error: result.error });
+        }
+      } catch (error) {
+        failedBookings.push({ station: selectedStation.station_name, error: 'Network error' });
+      }
+    }
+
+    // Show results
+    if (successfulBookings.length > 0) {
+      alert(`Successfully booked stations: ${successfulBookings.join(', ')}`);
+    }
+    if (failedBookings.length > 0) {
+      alert(`Failed to book stations:\n${failedBookings.map(fb => `${fb.station}: ${fb.error}`).join('\n')}`);
+    }
+
+    if (successfulBookings.length > 0) {
       form.reset();
       await loadBookings();
       await loadStations();
-    } else {
-      alert(result.error || 'Failed to book');
     }
   }
 
@@ -112,16 +153,35 @@ export default function BookingPreview(){
           <h2>Reserve a Station</h2>
           <form onSubmit={handleSubmit}>
             <input name="name" className="form-input" placeholder="Your name" required />
-            <input name="contact" className="form-input" placeholder="Contact number" required />
-            <label className="small">Select Station</label>
-            <select name="station" className="form-input" required style={{color: '#000'}}>
-              <option value="">Select a station...</option>
+            <input name="contact" className="form-input" placeholder="Contact number (optional)" />
+            <label className="small">Select Stations (tap multiple to select)</label>
+            <div className="station-selection" style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              marginBottom: '16px'
+            }}>
               {stations.map(s=> (
-                <option key={s.id} value={s.id} style={{color: '#000'}}>
+                <label key={s.id} style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  backgroundColor: 'white',
+                  color: 'black'
+                }}>
+                  <input
+                    type="checkbox"
+                    name="station"
+                    value={s.id}
+                    style={{ marginRight: '8px' }}
+                  />
                   {s.station_name}
-                </option>
+                </label>
               ))}
-            </select>
+            </div>
             
             <label className="small">Duration (hours:minutes)</label>
             <input 
@@ -140,8 +200,13 @@ export default function BookingPreview(){
 
         <div>
           <div className="card">
-            <h2>Live Station Availability</h2>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+              <h2>Live Station Availability</h2>
+              <div className="small" style={{color: '#666'}}>
+                Last updated: {lastUpdate.toLocaleTimeString()}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))',gap:12}}>
               {stations.map(s => (
                 <div 
                   key={s.id} 
@@ -150,21 +215,47 @@ export default function BookingPreview(){
                     padding: '15px',
                     borderRadius: '8px',
                     backgroundColor: s.status.toLowerCase() === 'occupied' ? '#ff444420' : '#00440020',
-                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#004400'}`
+                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#004400'}`,
+                    transition: 'all 0.3s ease'
                   }}
                 >
-                  <div style={{fontWeight:700}}>{s.station_name}</div>
-                  <div className="small" style={{
-                    color: s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#00aa00',
-                    marginTop: '5px'
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                   }}>
-                    {s.status}
+                    <div style={{fontWeight:700}}>{s.station_name}</div>
+                    <div style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      backgroundColor: s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#00aa00',
+                      color: 'white'
+                    }}>
+                      {s.status}
+                    </div>
                   </div>
                   {s.status.toLowerCase() === 'occupied' && (
-                    <div className="small" style={{marginTop: '5px', color: '#ff8888'}}>
-                      <div>User: {s.currentBooking.userName}</div>
-                      <div>Time Left: {s.timeRemaining}</div>
-                      <div>Until: {s.currentBooking.endTime}</div>
+                    <div style={{
+                      marginTop: '10px',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(255,255,255,0.1)'
+                    }}>
+                      <div style={{fontSize: '14px'}}>
+                        <strong>{s.currentBooking.userName}</strong>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        marginTop: '4px',
+                        fontSize: '12px',
+                        color: '#ff8888'
+                      }}>
+                        <span>Time Left: {s.timeRemaining}</span>
+                        <span>Until: {s.currentBooking.endTime}</span>
+                      </div>
                     </div>
                   )}
                 </div>
