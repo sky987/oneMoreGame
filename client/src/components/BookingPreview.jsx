@@ -201,63 +201,83 @@ export default function BookingPreview(){
         <div>
           <div className="card">
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
-              <h2>Live Station Availability</h2>
+              <h2>Live Station Status</h2>
               <div className="small" style={{color: '#666'}}>
                 Last updated: {lastUpdate.toLocaleTimeString()}
               </div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))',gap:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',gap:16}}>
               {stations.map(s => (
                 <div 
                   key={s.id} 
                   className={`station ${s.status.toLowerCase() === 'occupied' ? 'occupied' : 'available'}`}
                   style={{
-                    padding: '15px',
-                    borderRadius: '8px',
-                    backgroundColor: s.status.toLowerCase() === 'occupied' ? '#ff444420' : '#00440020',
-                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#004400'}`,
+                    padding: '16px',
+                    borderRadius: '12px',
+                    backgroundColor: s.status.toLowerCase() === 'occupied' ? '#FF000015' : '#00FF0015',
+                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#00FF00'}`,
+                    boxShadow: `0 0 20px ${s.status.toLowerCase() === 'occupied' ? '#FF000030' : '#00FF0030'}`,
                     transition: 'all 0.3s ease'
                   }}
                 >
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
+                    flexDirection: 'column',
+                    gap: '8px'
                   }}>
-                    <div style={{fontWeight:700}}>{s.station_name}</div>
                     <div style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      backgroundColor: s.status.toLowerCase() === 'occupied' ? '#ff4444' : '#00aa00',
-                      color: 'white'
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '4px'
                     }}>
-                      {s.status}
-                    </div>
-                  </div>
-                  {s.status.toLowerCase() === 'occupied' && (
-                    <div style={{
-                      marginTop: '10px',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      backgroundColor: 'rgba(255,255,255,0.1)'
-                    }}>
-                      <div style={{fontSize: '14px'}}>
-                        <strong>{s.currentBooking.userName}</strong>
+                      <div style={{
+                        fontWeight: '700',
+                        fontSize: '18px',
+                        color: s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#008800'
+                      }}>
+                        {s.station_name}
                       </div>
                       <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginTop: '4px',
-                        fontSize: '12px',
-                        color: '#ff8888'
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        backgroundColor: s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#00AA00',
+                        color: 'white',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
                       }}>
-                        <span>Time Left: {s.timeRemaining}</span>
-                        <span>Until: {s.currentBooking.endTime}</span>
+                        {s.status}
                       </div>
                     </div>
-                  )}
+                    {s.status.toLowerCase() === 'occupied' && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: '#FF000015',
+                        border: '1px solid #FF000030'
+                      }}>
+                        <div style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#FF0000',
+                          marginBottom: '8px'
+                        }}>
+                          {s.currentBooking.userName}
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: '14px',
+                          color: '#FF0000'
+                        }}>
+                          <strong>Time Left: {s.timeRemaining}</strong>
+                          <span>Until: {s.currentBooking.endTime}</span>
+                        </div>
+                      </div>
+                    )}
                 </div>
               ))}
             </div>
