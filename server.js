@@ -6,6 +6,20 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Helper function to calculate time remaining
+function getTimeRemaining(currentTime, endTime) {
+  const [currentHour, currentMinute] = currentTime.split(':').map(Number);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  
+  let minutesRemaining = (endHour * 60 + endMinute) - (currentHour * 60 + currentMinute);
+  if (minutesRemaining < 0) minutesRemaining += 24 * 60; // Handle day wraparound
+  
+  const hours = Math.floor(minutesRemaining / 60);
+  const minutes = minutesRemaining % 60;
+  
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 // Google Sheets setup
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 let CREDS = null;
@@ -179,12 +193,30 @@ app.get('/api/stations', async (req, res) => {
           .map(b => b.station_id)
       );
 
-      return res.json(stations.map(s => ({
-        id: parseInt(s.id),
-        station_name: `${s.station_name} #${s.specs}`,
-        specs: s.specs,
-        status: currentlyBooked.has(s.id) ? 'Occupied' : 'Available',
-        value: s.id
+      // Get current bookings with time remaining
+      const currentBookings = bookings.filter(b => 
+        b.booking_date === currentDate && 
+        b.status === 'confirmed' &&
+        b.start_time <= currentTime &&
+        b.end_time > currentTime
+      );
+
+      return res.json(stations.map(s => {
+        const currentBooking = currentBookings.find(b => b.station_id === s.id);
+        const timeRemaining = currentBooking ? getTimeRemaining(currentTime, currentBooking.end_time) : null;
+
+        return {
+          id: parseInt(s.id),
+          station_name: `${s.station_name} #${s.specs}`,
+          specs: s.specs,
+          status: currentBooking ? 'Occupied' : 'Available',
+          timeRemaining: timeRemaining,
+          currentBooking: currentBooking ? {
+            userName: currentBooking.user_name,
+            endTime: currentBooking.end_time
+          } : null,
+          value: s.id
+        };
       })));
     }
 
