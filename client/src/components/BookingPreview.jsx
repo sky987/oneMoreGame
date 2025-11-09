@@ -34,15 +34,28 @@ export default function BookingPreview(){
     const form = e.target;
     const datetime = new Date(form.datetime.value);
     
+    // Get duration in hours and minutes
+    const [durationHours, durationMinutes] = form.duration.value.split(':').map(Number);
+    const totalHours = durationHours + (durationMinutes / 60);
+    
+    // Get station details for pricing
+    const selectedStation = stations.find(s => s.id === parseInt(form.station.value, 10));
+    const hourlyRate = selectedStation?.specs === 'PS5' ? 100 : 60;
+    const totalPrice = Math.round(totalHours * hourlyRate);
+    
+    // Calculate end time
+    const startTime = datetime;
+    const endTime = new Date(startTime.getTime() + (durationHours * 60 + durationMinutes) * 60000);
+    
     const payload = {
       user_name: form.name.value,
-      contact: form.contact.value,
+      contact: form.contact.value.replace(/[^0-9+]/g, ''), // Clean phone number
       station_id: parseInt(form.station.value, 10),
       booking_date: datetime.toISOString().split('T')[0],
-      start_time: datetime.toISOString().split('T')[1].substring(0, 5),
-      end_time: new Date(datetime.getTime() + 2 * 60 * 60 * 1000).toISOString().split('T')[1].substring(0, 5),
-      duration_hours: 2,
-      total_price: 100
+      start_time: startTime.toTimeString().substring(0, 5),
+      end_time: endTime.toTimeString().substring(0, 5),
+      duration_hours: totalHours.toFixed(2),
+      total_price: totalPrice
     };
     const res = await fetch('/api/bookings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     const result = await res.json();
@@ -74,10 +87,24 @@ export default function BookingPreview(){
             <input name="name" className="form-input" placeholder="Your name" required />
             <input name="contact" className="form-input" placeholder="Contact number" required />
             <label className="small">Select Station</label>
-            <select name="station" className="form-input" required>
+            <select name="station" className="form-input" required style={{color: '#000'}}>
               <option value="">Select a station...</option>
-              {stations.map(s=> <option key={s.id} value={s.id}>{s.station_name}</option>)}
+              {stations.map(s=> (
+                <option key={s.id} value={s.id} style={{color: '#000'}}>
+                  {s.station_name}
+                </option>
+              ))}
             </select>
+            
+            <label className="small">Duration (hours:minutes)</label>
+            <input 
+              name="duration" 
+              type="time" 
+              className="form-input" 
+              required 
+              defaultValue="01:00"
+              style={{color: '#000'}}
+            />
             <label className="small">Select Date & Time</label>
             <input name="datetime" type="datetime-local" className="form-input" required />
             <button className="btn" type="submit">Confirm Booking</button>
@@ -102,17 +129,35 @@ export default function BookingPreview(){
             {loading ? <div className="small">Loading...</div> : (
               <table className="table">
                 <thead>
-                  <tr><th>ID</th><th>Name</th><th>Station</th><th>DateTime</th><th>Status</th><th>Action</th></tr>
+                  <tr>
+                    <th>ID</th>
+                    <th>Customer Name</th>
+                    <th>Station</th>
+                    <th>Booking Details</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {bookings.map(b => (
                     <tr key={b.id}>
                       <td>{b.id}</td>
-                      <td>{b.name}</td>
-                      <td>{b.station_name || b.station_id}</td>
-                      <td>{new Date(b.datetime).toLocaleString()}</td>
+                      <td>{b.user_name}</td>
+                      <td>{b.station_name}</td>
+                      <td>
+                        {b.booking_date} {b.start_time}-{b.end_time}
+                        <div className="small">
+                          Duration: {b.duration_hours}hrs (₹{b.total_price})
+                        </div>
+                      </td>
                       <td>{b.status}</td>
-                      <td>{b.status==='Active' && <button className="btn" onClick={()=>markComplete(b.id)}>Complete</button>}</td>
+                      <td>
+                        {b.status === 'confirmed' && (
+                          <button className="btn" onClick={()=>markComplete(b.id)}>
+                            Complete
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
