@@ -251,7 +251,7 @@ app.get('/api/stations', async (req, res) => {
           id: parseInt(s.id),
           station_name: `${s.station_name} #${s.specs}`,
           specs: s.specs,
-          status: currentBooking ? 'Occupied' : 'Available',
+          status: currentBooking ? 'occupied' : 'available',
           timeRemaining: timeRemaining,
           currentBooking: currentBooking ? {
             userName: currentBooking.user_name,
