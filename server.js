@@ -159,28 +159,56 @@ app.get('/api/stations', async (req, res) => {
   try {
     const { datetime } = req.query;
     const stations = await stationsSheet.getRows();
+    const bookings = await bookingsSheet.getRows();
     
     if (!datetime) {
+      // Get current time
+      const now = new Date();
+      const currentTime = now.toTimeString().substring(0, 5);
+      const currentDate = now.toISOString().split('T')[0];
+
+      // Check current bookings
+      const currentlyBooked = new Set(
+        bookings
+          .filter(b => 
+            b.booking_date === currentDate && 
+            b.status === 'confirmed' &&
+            b.start_time <= currentTime &&
+            b.end_time > currentTime
+          )
+          .map(b => b.station_id)
+      );
+
       return res.json(stations.map(s => ({
         id: parseInt(s.id),
         station_name: `${s.station_name} #${s.specs}`,
         specs: s.specs,
-        status: s.status,
-        value: s.id // Adding value field for dropdown
+        status: currentlyBooked.has(s.id) ? 'Occupied' : 'Available',
+        value: s.id
       })));
     }
 
-    // Get bookings for the date
-    const bookings = await bookingsSheet.getRows();
-    const booked = bookings
-      .filter(b => b.booking_date === datetime && b.status === 'confirmed')
-      .map(b => parseInt(b.station_id));
+    // For specific datetime query
+    const queryTime = new Date(datetime).toTimeString().substring(0, 5);
+    const queryDate = datetime.split('T')[0];
+
+    // Check bookings for the specific time
+    const booked = new Set(
+      bookings
+        .filter(b => 
+          b.booking_date === queryDate && 
+          b.status === 'confirmed' &&
+          b.start_time <= queryTime &&
+          b.end_time > queryTime
+        )
+        .map(b => b.station_id)
+    );
 
     const out = stations.map(s => ({
       id: parseInt(s.id),
       station_name: s.station_name,
       specs: s.specs,
-      status: booked.includes(parseInt(s.id)) ? 'Occupied' : 'Available'
+      status: booked.has(s.id) ? 'Occupied' : 'Available'
     }));
 
     res.json(out);
@@ -233,15 +261,28 @@ app.post('/api/bookings', async (req, res) => {
 
     // Check availability
     const bookings = await bookingsSheet.getRows();
-    const existing = bookings.find(
+    const existingBookings = bookings.filter(
       b => b.station_id === station_id.toString() &&
            b.booking_date === booking_date &&
-           b.start_time === start_time &&
            b.status === 'confirmed'
     );
 
-    if (existing) {
-      return res.status(400).json({ error: 'Station already booked for this time' });
+    // Check for time overlap
+    const hasOverlap = existingBookings.some(booking => {
+      const newStartTime = start_time;
+      const newEndTime = end_time;
+      const existingStartTime = booking.start_time;
+      const existingEndTime = booking.end_time;
+
+      return (
+        (newStartTime >= existingStartTime && newStartTime < existingEndTime) ||
+        (newEndTime > existingStartTime && newEndTime <= existingEndTime) ||
+        (newStartTime <= existingStartTime && newEndTime >= existingEndTime)
+      );
+    });
+
+    if (hasOverlap) {
+      return res.status(400).json({ error: 'Station already booked during this time period' });
     }
 
     // Get next ID
