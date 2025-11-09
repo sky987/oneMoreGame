@@ -42,17 +42,10 @@ export default function BookingPreview() {
 
     // Check if selected time is in the past
     const now = new Date();
-    const selectedDateTime = datetime.getTime();
-    const currentDateTime = now.getTime();
-
-    // Allow same day bookings but prevent past times
-    if (selectedDateTime < currentDateTime - 1000 * 60) {
+    if (datetime.getTime() < now.getTime() - 1000 * 60) {
       alert('Cannot book for past dates/times');
       return;
     }
-
-    const selectedDate = datetime.toISOString().split('T')[0];
-    const selectedTime = datetime.toTimeString().substring(0, 5);
 
     const selectedStations = Array.from(
       form.querySelectorAll('input[name="station"]:checked')
@@ -63,27 +56,10 @@ export default function BookingPreview() {
       return;
     }
 
-    // Check for existing bookings
-    const existingBooking = bookings.find(
-      (b) =>
-        b.booking_date === selectedDate &&
-        selectedStations.includes(parseInt(b.station_id, 10)) &&
-        b.status === 'confirmed' &&
-        ((selectedTime >= b.start_time && selectedTime < b.end_time) ||
-          (b.start_time >= selectedTime && b.start_time < form.duration.value))
-    );
-
-    if (existingBooking) {
-      alert('This station is already booked for this time period');
-      return;
-    }
-
-    // Get duration
     const [durationHours, durationMinutes] = form.duration.value
       .split(':')
       .map(Number);
     const totalHours = durationHours + durationMinutes / 60;
-
     const startTime = datetime;
     const endTime = new Date(
       startTime.getTime() + (durationHours * 60 + durationMinutes) * 60000
@@ -168,17 +144,8 @@ export default function BookingPreview() {
         <div className="card">
           <h2>Reserve a Station</h2>
           <form onSubmit={handleSubmit}>
-            <input
-              name="name"
-              className="form-input"
-              placeholder="Your name"
-              required
-            />
-            <input
-              name="contact"
-              className="form-input"
-              placeholder="Contact number (optional)"
-            />
+            <input name="name" className="form-input" placeholder="Your name" required />
+            <input name="contact" className="form-input" placeholder="Contact number (optional)" />
 
             <label className="small">Select Stations</label>
             <div
@@ -204,12 +171,7 @@ export default function BookingPreview() {
                     color: 'black',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    name="station"
-                    value={s.id}
-                    style={{ marginRight: '8px' }}
-                  />
+                  <input type="checkbox" name="station" value={s.id} style={{ marginRight: '8px' }} />
                   {s.station_name}
                 </label>
               ))}
@@ -226,15 +188,9 @@ export default function BookingPreview() {
             />
 
             <label className="small">Select Date & Time</label>
-            <input
-              name="datetime"
-              type="datetime-local"
-              className="form-input"
-              required
-            />
-            <button className="btn" type="submit">
-              Confirm Booking
-            </button>
+            <input name="datetime" type="datetime-local" className="form-input" required />
+
+            <button className="btn" type="submit">Confirm Booking</button>
           </form>
         </div>
 
@@ -242,129 +198,80 @@ export default function BookingPreview() {
         <div>
           {/* Live Station Status */}
           <div className="card">
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px',
-              }}
-            >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'
+            }}>
               <h2>Live Station Status</h2>
               <div className="small" style={{ color: '#666' }}>
                 Last updated: {lastUpdate.toLocaleTimeString()}
               </div>
             </div>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: 16,
-              }}
-            >
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: 16
+            }}>
               {stations.map((s) => (
                 <div
                   key={s.id}
-                  className={`station ${
-                    s.status.toLowerCase() === 'occupied'
-                      ? 'occupied'
-                      : 'available'
-                  }`}
+                  className={`station ${s.status.toLowerCase() === 'occupied' ? 'occupied' : 'available'}`}
                   style={{
                     padding: '16px',
                     borderRadius: '12px',
-                    backgroundColor:
-                      s.status.toLowerCase() === 'occupied'
-                        ? '#FF000015'
-                        : '#00FF0015',
-                    border: `2px solid ${
-                      s.status.toLowerCase() === 'occupied'
-                        ? '#FF0000'
-                        : '#00FF00'
-                    }`,
-                    boxShadow: `0 0 20px ${
-                      s.status.toLowerCase() === 'occupied'
-                        ? '#FF000030'
-                        : '#00FF0030'
-                    }`,
-                    transition: 'all 0.3s ease',
+                    backgroundColor: s.status.toLowerCase() === 'occupied' ? '#FF000015' : '#00FF0015',
+                    border: `2px solid ${s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#00FF00'}`,
+                    boxShadow: `0 0 20px ${s.status.toLowerCase() === 'occupied' ? '#FF000030' : '#00FF0030'}`,
+                    transition: 'all 0.3s ease'
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: '700',
-                          fontSize: '18px',
-                          color:
-                            s.status.toLowerCase() === 'occupied'
-                              ? '#FF0000'
-                              : '#008800',
-                        }}
-                      >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{
+                        fontWeight: '700',
+                        fontSize: '18px',
+                        color: s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#008800'
+                      }}>
                         {s.station_name}
                       </div>
-                      <div
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: '20px',
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          backgroundColor:
-                            s.status.toLowerCase() === 'occupied'
-                              ? '#FF0000'
-                              : '#00AA00',
-                          color: 'white',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
+                      <div style={{
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        backgroundColor: s.status.toLowerCase() === 'occupied' ? '#FF0000' : '#00AA00',
+                        color: 'white',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
                         {s.status}
                       </div>
                     </div>
 
-                    {s.status.toLowerCase() === 'occupied' && (
+                    {s.status.toLowerCase() === 'occupied' && s.currentBooking && (
                       <div
                         style={{
                           marginTop: '8px',
                           padding: '12px',
                           borderRadius: '8px',
                           backgroundColor: '#FF000015',
-                          border: '1px solid #FF000030',
+                          border: '1px solid #FF000030'
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: '16px',
-                            fontWeight: '600',
-                            color: '#FF0000',
-                            marginBottom: '8px',
-                          }}
-                        >
+                        <div style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#FF0000',
+                          marginBottom: '8px'
+                        }}>
                           {s.currentBooking.userName}
                         </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontSize: '14px',
-                            color: '#FF0000',
-                          }}
-                        >
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: '14px',
+                          color: '#FF0000'
+                        }}>
                           <strong>Time Left: {s.timeRemaining}</strong>
                           <span>Until: {s.currentBooking.endTime}</span>
                         </div>
@@ -408,10 +315,7 @@ export default function BookingPreview() {
                       <td>{b.status}</td>
                       <td>
                         {b.status === 'confirmed' && (
-                          <button
-                            className="btn"
-                            onClick={() => markComplete(b.id)}
-                          >
+                          <button className="btn" onClick={() => markComplete(b.id)}>
                             Complete
                           </button>
                         )}
