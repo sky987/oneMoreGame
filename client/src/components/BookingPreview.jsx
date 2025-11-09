@@ -11,9 +11,15 @@ export default function BookingPreview(){
   },[]);
 
   async function loadStations(){
-    const res = await fetch('/api/stations');
-    const data = await res.json();
-    setStations(data);
+    try {
+      const res = await fetch('/api/stations');
+      const data = await res.json();
+      console.log('Loaded stations:', data);
+      setStations(data);
+    } catch (err) {
+      console.error('Failed to load stations:', err);
+      setStations([]);
+    }
   }
 
   async function loadBookings(){
@@ -26,11 +32,17 @@ export default function BookingPreview(){
   async function handleSubmit(e){
     e.preventDefault();
     const form = e.target;
+    const datetime = new Date(form.datetime.value);
+    
     const payload = {
-      name: form.name.value,
+      user_name: form.name.value,
       contact: form.contact.value,
       station_id: parseInt(form.station.value, 10),
-      datetime: form.datetime.value
+      booking_date: datetime.toISOString().split('T')[0],
+      start_time: datetime.toISOString().split('T')[1].substring(0, 5),
+      end_time: new Date(datetime.getTime() + 2 * 60 * 60 * 1000).toISOString().split('T')[1].substring(0, 5),
+      duration_hours: 2,
+      total_price: 100
     };
     const res = await fetch('/api/bookings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     const result = await res.json();
@@ -62,8 +74,9 @@ export default function BookingPreview(){
             <input name="name" className="form-input" placeholder="Your name" required />
             <input name="contact" className="form-input" placeholder="Contact number" required />
             <label className="small">Select Station</label>
-            <select name="station" className="form-input">
-              {stations.map(s=> <option key={s.id} value={s.id}>{s.name}</option>)}
+            <select name="station" className="form-input" required>
+              <option value="">Select a station...</option>
+              {stations.map(s=> <option key={s.id} value={s.id}>{s.station_name}</option>)}
             </select>
             <label className="small">Select Date & Time</label>
             <input name="datetime" type="datetime-local" className="form-input" required />
@@ -76,8 +89,8 @@ export default function BookingPreview(){
             <h2>Live Station Availability</h2>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
               {stations.map(s => (
-                <div key={s.id} className={`station ${s.status === 'Occupied' ? 'occupied' : 'available'}`}>
-                  <div style={{fontWeight:700}}>{s.name}</div>
+                <div key={s.id} className={`station ${s.status.toLowerCase() === 'occupied' ? 'occupied' : 'available'}`}>
+                  <div style={{fontWeight:700}}>{s.station_name}</div>
                   <div className="small">{s.status}</div>
                 </div>
               ))}
